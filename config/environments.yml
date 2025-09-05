@@ -1,0 +1,17 @@
+test:
+  base_url: 'http://automationexercise.com'
+  browser: 'chrome'
+  headless: false
+  timeout: 10
+
+staging:
+  base_url: 'http://staging.automationexercise.com'
+  browser: 'chrome'
+  headless: true
+  timeout: 15
+
+production:
+  base_url: 'http://automationexercise.com'
+  browser: 'chrome'
+  headless: true
+  timeout: 20

@@ -1,0 +1,6 @@
+--require spec_helper
+--format documentation
+--format ModernHtmlFormatter --out reports/test_report.html
+--format JsonReporter --out reports/test_results.json
+--color
+--order random

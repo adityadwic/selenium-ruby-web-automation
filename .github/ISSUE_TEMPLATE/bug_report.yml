@@ -1,0 +1,135 @@
+name: 🐛 Bug Report
+description: Create a report for a test failure or framework issue
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+assignees:
+  - adityadwicahyono
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! 🐛
+
+  - type: dropdown
+    id: test-type
+    attributes:
+      label: Test Type
+      description: What type of test is failing?
+      options:
+        - E2E Test Failure
+        - Framework Issue
+        - CI/CD Pipeline Issue
+        - Report Generation Issue
+        - Browser Compatibility Issue
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      description: Which browser was used?
+      options:
+        - Chrome
+        - Firefox
+        - Safari
+        - Multiple browsers
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Which environment was tested?
+      options:
+        - Test
+        - Staging
+        - Production
+        - Local Development
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: Describe the issue in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: A clear and concise description of what actually happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots/Videos
+      description: If applicable, add screenshots or videos to help explain your problem
+      placeholder: Drag and drop screenshots here or provide links
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs
+      description: Please copy and paste any relevant log output
+      render: shell
+
+  - type: textarea
+    id: system-info
+    attributes:
+      label: System Information
+      description: |
+        Please provide system information:
+        - OS: [e.g. macOS, Windows, Ubuntu]
+        - Ruby Version: [e.g. 3.1.0]
+        - Selenium Version: [e.g. 4.1.0]
+        - Framework Version: [e.g. commit hash]
+      placeholder: |
+        - OS: macOS Monterey
+        - Ruby Version: 3.1.0
+        - Selenium Version: 4.1.0
+        - Framework Version: latest
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please verify the following
+      options:
+        - label: I have searched for similar issues
+          required: true
+        - label: I have provided all required information
+          required: true
+        - label: I have attached relevant screenshots/logs
+          required: false
+        - label: This issue is reproducible
+          required: true

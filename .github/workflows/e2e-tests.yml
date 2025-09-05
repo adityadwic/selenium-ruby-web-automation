@@ -1,0 +1,389 @@
+name: 🎯 Selenium Ruby E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run tests every day at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Browser to run tests'
+        required: true
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test
+          - staging
+          - production
+      test_tag:
+        description: 'Test tag to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - smoke
+          - regression
+      headless:
+        description: 'Run in headless mode'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  RUBY_VERSION: '3.1'
+  NODE_VERSION: '18'
+
+jobs:
+  # Job untuk lint dan code quality
+  code-quality:
+    name: 🔍 Code Quality & Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🔍 Run RuboCop
+        run: |
+          bundle exec rubocop --format github
+          
+      - name: 📊 Generate RuboCop Report
+        run: |
+          mkdir -p reports
+          bundle exec rubocop --format html --out reports/rubocop_report.html
+          bundle exec rubocop --format json --out reports/rubocop_report.json
+        continue-on-error: true
+
+      - name: 📤 Upload Code Quality Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-quality-reports
+          path: reports/rubocop_*
+          retention-days: 30
+
+  # Job untuk testing di berbagai browser
+  test-matrix:
+    name: 🧪 E2E Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox]
+        test-type: [smoke, regression]
+        include:
+          - browser: chrome
+            test-type: smoke
+            reports: 'all'
+          - browser: firefox  
+            test-type: regression
+            reports: 'html'
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js (for Allure)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 🖥️ Setup Chrome
+        if: matrix.browser == 'chrome'
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: 🦊 Setup Firefox
+        if: matrix.browser == 'firefox'
+        uses: browser-actions/setup-firefox@v1
+        with:
+          firefox-version: latest
+
+      - name: 🔧 Verify Browser Installation
+        run: |
+          echo "Checking browser installation..."
+          if [ "${{ matrix.browser }}" = "chrome" ]; then
+            google-chrome --version
+          elif [ "${{ matrix.browser }}" = "firefox" ]; then
+            firefox --version
+          fi
+
+      - name: 📁 Prepare Test Environment
+        run: |
+          mkdir -p reports/{screenshots,allure-results,allure-report}
+          chmod +x run_tests.sh
+
+      - name: 🚀 Run E2E Tests
+        env:
+          BROWSER: ${{ matrix.browser }}
+          HEADLESS: ${{ inputs.headless || 'true' }}
+          ENV: ${{ inputs.environment || 'test' }}
+        run: |
+          if [ "${{ inputs.test_tag }}" = "all" ] || [ -z "${{ inputs.test_tag }}" ]; then
+            ./run_tests.sh --browser ${{ matrix.browser }} --headless --tag ${{ matrix.test-type }} --reports ${{ matrix.reports }}
+          else
+            ./run_tests.sh --browser ${{ matrix.browser }} --headless --tag ${{ inputs.test_tag }} --reports ${{ matrix.reports }}
+          fi
+
+      - name: 🎨 Generate Allure Report
+        if: always()
+        run: |
+          if [ -d "reports/allure-results" ] && [ "$(ls -A reports/allure-results)" ]; then
+            allure generate reports/allure-results --clean -o reports/allure-report
+            echo "✅ Allure report generated successfully"
+          else
+            echo "⚠️ No Allure results found"
+          fi
+
+      - name: 📊 Test Results Summary
+        if: always()
+        run: |
+          echo "## 📊 Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Browser**: ${{ matrix.browser }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Type**: ${{ matrix.test-type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${{ inputs.environment || 'test' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Headless**: ${{ inputs.headless || 'true' }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "reports/test_results.json" ]; then
+            echo "### Test Statistics" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat reports/test_results.json | jq '.summary' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload Test Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-${{ matrix.browser }}-${{ matrix.test-type }}
+          path: |
+            reports/
+            !reports/allure-results/
+          retention-days: 30
+
+      - name: 📤 Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-${{ matrix.browser }}-${{ matrix.test-type }}
+          path: reports/allure-results/
+          retention-days: 30
+
+      - name: 🏷️ Comment PR with Test Results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'reports/test_results.json';
+            
+            if (fs.existsSync(path)) {
+              const results = JSON.parse(fs.readFileSync(path, 'utf8'));
+              const summary = results.summary;
+              
+              const status = summary.failed > 0 ? '❌' : '✅';
+              const successRate = summary.success_rate;
+              
+              const comment = `
+              ## ${status} Test Results - ${{ matrix.browser }} (${{ matrix.test-type }})
+              
+              | Metric | Value |
+              |--------|-------|
+              | Total Tests | ${summary.total} |
+              | Passed | ✅ ${summary.passed} |
+              | Failed | ❌ ${summary.failed} |
+              | Pending | ⏳ ${summary.pending} |
+              | Success Rate | ${successRate}% |
+              | Duration | ${summary.duration.toFixed(2)}s |
+              
+              📊 [View Detailed Report](../../actions/runs/${{ github.run_id }})
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+  # Job untuk publish Allure report
+  publish-reports:
+    name: 📈 Publish Test Reports
+    runs-on: ubuntu-latest
+    needs: test-matrix
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: 🔄 Merge Allure Results
+        run: |
+          mkdir -p merged-allure-results
+          find . -name "allure-results-*" -type d | while read dir; do
+            if [ -d "$dir" ]; then
+              echo "Merging $dir"
+              cp -r "$dir"/* merged-allure-results/ 2>/dev/null || true
+            fi
+          done
+
+      - name: 🎨 Generate Combined Allure Report
+        run: |
+          if [ "$(ls -A merged-allure-results)" ]; then
+            allure generate merged-allure-results --clean -o allure-report
+            echo "✅ Combined Allure report generated"
+          else
+            echo "⚠️ No Allure results to merge"
+            mkdir -p allure-report
+            echo "<h1>No test results found</h1>" > allure-report/index.html
+          fi
+
+      - name: 📊 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-report
+          destination_dir: test-reports/${{ github.run_number }}
+
+      - name: 📝 Create Release Notes
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "## 🎯 Automated Test Results - Build #${{ github.run_number }}" > release_notes.md
+          echo "" >> release_notes.md
+          echo "📅 **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> release_notes.md
+          echo "🔗 **Commit**: ${{ github.sha }}" >> release_notes.md
+          echo "👤 **Triggered by**: ${{ github.actor }}" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "📊 **Test Report**: [View Results](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/test-reports/${{ github.run_number }})" >> release_notes.md
+
+      - name: 📤 Upload Combined Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-test-reports
+          path: |
+            allure-report/
+            release_notes.md
+          retention-days: 90
+
+  # Job untuk security scanning
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📤 Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Job untuk notification
+  notify:
+    name: 📢 Notifications
+    runs-on: ubuntu-latest
+    needs: [test-matrix, publish-reports]
+    if: always()
+    
+    steps:
+      - name: 📊 Calculate overall status
+        id: status
+        run: |
+          if [ "${{ needs.test-matrix.result }}" = "success" ]; then
+            echo "status=✅ SUCCESS" >> $GITHUB_OUTPUT
+            echo "color=good" >> $GITHUB_OUTPUT
+          else
+            echo "status=❌ FAILED" >> $GITHUB_OUTPUT
+            echo "color=danger" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📢 Slack Notification
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: 8398a7/action-slack@v3
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          status: custom
+          custom_payload: |
+            {
+              attachments: [{
+                color: '${{ steps.status.outputs.color }}',
+                title: '🎯 Selenium Ruby E2E Test Results',
+                fields: [{
+                  title: 'Repository',
+                  value: '${{ github.repository }}',
+                  short: true
+                }, {
+                  title: 'Branch',
+                  value: '${{ github.ref_name }}',
+                  short: true
+                }, {
+                  title: 'Status',
+                  value: '${{ steps.status.outputs.status }}',
+                  short: true
+                }, {
+                  title: 'Triggered by',
+                  value: '${{ github.actor }}',
+                  short: true
+                }],
+                actions: [{
+                  type: 'button',
+                  text: 'View Results',
+                  url: 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+                }]
+              }]
+            }

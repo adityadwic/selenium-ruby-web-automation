@@ -1,0 +1,386 @@
+name: ⚡ Performance Testing
+
+on:
+  schedule:
+    # Run performance tests weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - test
+          - staging
+          - production
+      duration:
+        description: 'Test duration (minutes)'
+        required: true
+        default: '10'
+        type: string
+      concurrent_users:
+        description: 'Number of concurrent users'
+        required: true
+        default: '5'
+        type: string
+
+env:
+  RUBY_VERSION: '3.1'
+  NODE_VERSION: '18'
+
+jobs:
+  performance-baseline:
+    name: 📊 Performance Baseline
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Performance Tools
+        run: |
+          npm install -g lighthouse
+          npm install -g @lhci/cli
+
+      - name: 🖥️ Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🚀 Run Single User Performance Test
+        env:
+          ENV: ${{ inputs.environment || 'staging' }}
+          HEADLESS: 'true'
+        run: |
+          chmod +x run_tests.sh
+          echo "Running baseline performance test..."
+          time ./run_tests.sh --browser chrome --headless --env $ENV --tag smoke --reports json
+
+      - name: 📊 Extract Performance Metrics
+        run: |
+          if [ -f "reports/test_results.json" ]; then
+            echo "## 📊 Performance Baseline Results" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract test durations
+            total_duration=$(cat reports/test_results.json | jq '.summary.duration')
+            average_test_duration=$(cat reports/test_results.json | jq '[.examples[].duration] | add / length')
+            
+            echo "- **Total Duration**: ${total_duration}s" >> $GITHUB_STEP_SUMMARY
+            echo "- **Average Test Duration**: ${average_test_duration}s" >> $GITHUB_STEP_SUMMARY
+            echo "- **Environment**: ${{ inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+            
+            # Create performance baseline file
+            cat > performance-baseline.json << EOF
+            {
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "environment": "${{ inputs.environment || 'staging' }}",
+              "total_duration": $total_duration,
+              "average_test_duration": $average_test_duration,
+              "test_count": $(cat reports/test_results.json | jq '.summary.total')
+            }
+            EOF
+          fi
+
+      - name: 📤 Upload Baseline Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-baseline
+          path: |
+            reports/
+            performance-baseline.json
+          retention-days: 30
+
+  lighthouse-audit:
+    name: 🏠 Lighthouse Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Lighthouse
+        run: npm install -g lighthouse @lhci/cli
+
+      - name: 🖥️ Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🏠 Run Lighthouse Audit
+        env:
+          ENV: ${{ inputs.environment || 'staging' }}
+        run: |
+          # Determine the base URL based on environment
+          case "$ENV" in
+            "test") BASE_URL="http://automationexercise.com" ;;
+            "staging") BASE_URL="http://automationexercise.com" ;;
+            "production") BASE_URL="http://automationexercise.com" ;;
+            *) BASE_URL="http://automationexercise.com" ;;
+          esac
+          
+          echo "Running Lighthouse audit on $BASE_URL"
+          mkdir -p lighthouse-reports
+          
+          # Run Lighthouse for multiple pages
+          lighthouse $BASE_URL \
+            --output html,json \
+            --output-path ./lighthouse-reports/homepage \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --quiet
+          
+          lighthouse $BASE_URL/login \
+            --output html,json \
+            --output-path ./lighthouse-reports/login \
+            --chrome-flags="--headless --no-sandbox --disable-dev-shm-usage" \
+            --quiet
+
+      - name: 📊 Analyze Lighthouse Results
+        run: |
+          echo "## 🏠 Lighthouse Performance Audit" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for page in homepage login; do
+            if [ -f "lighthouse-reports/${page}.report.json" ]; then
+              performance=$(cat lighthouse-reports/${page}.report.json | jq '.categories.performance.score * 100')
+              accessibility=$(cat lighthouse-reports/${page}.report.json | jq '.categories.accessibility.score * 100')
+              best_practices=$(cat lighthouse-reports/${page}.report.json | jq '.categories."best-practices".score * 100')
+              seo=$(cat lighthouse-reports/${page}.report.json | jq '.categories.seo.score * 100')
+              
+              echo "### ${page^} Page" >> $GITHUB_STEP_SUMMARY
+              echo "- 🚀 **Performance**: ${performance}%" >> $GITHUB_STEP_SUMMARY
+              echo "- ♿ **Accessibility**: ${accessibility}%" >> $GITHUB_STEP_SUMMARY
+              echo "- ✅ **Best Practices**: ${best_practices}%" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔍 **SEO**: ${seo}%" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: 📤 Upload Lighthouse Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: lighthouse-reports/
+          retention-days: 30
+
+  parallel-load-test:
+    name: ⚡ Parallel Load Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        instance: [1, 2, 3, 4, 5]
+        
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🖥️ Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: ⚡ Run Concurrent Load Test
+        env:
+          ENV: ${{ inputs.environment || 'staging' }}
+          INSTANCE: ${{ matrix.instance }}
+        run: |
+          echo "🚀 Starting load test instance $INSTANCE"
+          chmod +x run_tests.sh
+          
+          # Add random delay to avoid synchronized starts
+          sleep $((RANDOM % 10))
+          
+          start_time=$(date +%s)
+          ./run_tests.sh --browser chrome --headless --env $ENV --tag smoke --reports json
+          end_time=$(date +%s)
+          
+          duration=$((end_time - start_time))
+          
+          # Create load test result
+          cat > load-test-result-${INSTANCE}.json << EOF
+          {
+            "instance": $INSTANCE,
+            "start_time": $start_time,
+            "end_time": $end_time,
+            "duration": $duration,
+            "environment": "$ENV"
+          }
+          EOF
+
+      - name: 📤 Upload Load Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-instance-${{ matrix.instance }}
+          path: |
+            reports/
+            load-test-result-${{ matrix.instance }}.json
+          retention-days: 30
+
+  analyze-performance:
+    name: 📈 Analyze Performance Results
+    runs-on: ubuntu-latest
+    needs: [performance-baseline, lighthouse-audit, parallel-load-test]
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python for Analysis
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: 📦 Install Analysis Tools
+        run: |
+          pip install matplotlib pandas numpy jinja2
+
+      - name: 📥 Download All Results
+        uses: actions/download-artifact@v4
+
+      - name: 📊 Analyze Performance Data
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          import glob
+          import statistics
+          from datetime import datetime
+          
+          # Collect load test results
+          load_results = []
+          for file in glob.glob('load-test-instance-*/load-test-result-*.json'):
+              with open(file, 'r') as f:
+                  data = json.load(f)
+                  load_results.append(data)
+          
+          if load_results:
+              durations = [r['duration'] for r in load_results]
+              avg_duration = statistics.mean(durations)
+              max_duration = max(durations)
+              min_duration = min(durations)
+              
+              print(f"Load Test Analysis:")
+              print(f"- Concurrent instances: {len(load_results)}")
+              print(f"- Average duration: {avg_duration:.2f}s")
+              print(f"- Max duration: {max_duration}s")
+              print(f"- Min duration: {min_duration}s")
+              print(f"- Performance variance: {statistics.stdev(durations):.2f}s")
+              
+              # Create summary report
+              summary = {
+                  "timestamp": datetime.utcnow().isoformat(),
+                  "concurrent_instances": len(load_results),
+                  "average_duration": avg_duration,
+                  "max_duration": max_duration,
+                  "min_duration": min_duration,
+                  "variance": statistics.stdev(durations) if len(durations) > 1 else 0,
+                  "environment": "${{ inputs.environment || 'staging' }}"
+              }
+              
+              with open('performance-summary.json', 'w') as f:
+                  json.dump(summary, f, indent=2)
+          EOF
+
+      - name: 📊 Generate Performance Report
+        run: |
+          cat > performance-report.md << 'EOF'
+          # ⚡ Performance Test Report
+          
+          **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Environment**: ${{ inputs.environment || 'staging' }}
+          **Concurrent Users**: ${{ inputs.concurrent_users || '5' }}
+          **Duration**: ${{ inputs.duration || '10' }} minutes
+          
+          ## 📊 Load Test Results
+          
+          EOF
+          
+          if [ -f "performance-summary.json" ]; then
+            echo "### Summary Statistics" >> performance-report.md
+            echo '```json' >> performance-report.md
+            cat performance-summary.json >> performance-report.md
+            echo '```' >> performance-report.md
+          fi
+          
+          if [ -d "lighthouse-reports" ]; then
+            echo "## 🏠 Lighthouse Audit Results" >> performance-report.md
+            echo "Lighthouse audit completed for key pages." >> performance-report.md
+          fi
+          
+          echo "## 📈 Recommendations" >> performance-report.md
+          echo "- Monitor response times during peak hours" >> performance-report.md
+          echo "- Optimize critical path performance" >> performance-report.md
+          echo "- Consider caching strategies for better performance" >> performance-report.md
+
+      - name: 📈 Deploy Performance Report
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          destination_dir: performance-reports/$(date +%Y-%m-%d)
+          publish_branch: gh-pages
+
+      - name: 📤 Upload Performance Analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-analysis
+          path: |
+            performance-summary.json
+            performance-report.md
+          retention-days: 90
+
+      - name: 🚨 Performance Alert
+        if: always()
+        run: |
+          if [ -f "performance-summary.json" ]; then
+            avg_duration=$(cat performance-summary.json | jq '.average_duration')
+            variance=$(cat performance-summary.json | jq '.variance')
+            
+            # Alert if average duration > 60s or high variance
+            if (( $(echo "$avg_duration > 60" | bc -l) )) || (( $(echo "$variance > 10" | bc -l) )); then
+              echo "⚠️ Performance degradation detected!"
+              echo "Average duration: ${avg_duration}s"
+              echo "Variance: ${variance}s"
+              
+              # Could trigger alert here
+              echo "PERFORMANCE_ALERT=true" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: 📧 Send Performance Alert
+        if: env.PERFORMANCE_ALERT == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "⚠️ Performance Alert - ${{ inputs.environment || 'staging' }}"
+          to: ${{ secrets.PERFORMANCE_ALERT_EMAIL }}
+          from: "GitHub Actions <performance@github.com>"
+          html_body: |
+            <h2>⚠️ Performance Alert</h2>
+            <p><strong>Environment:</strong> ${{ inputs.environment || 'staging' }}</p>
+            <p><strong>Date:</strong> $(date -u)</p>
+            <p><strong>Issue:</strong> Performance degradation detected</p>
+            <p><strong>Details:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Analysis</a></p>
+            <p><strong>Report:</strong> <a href="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/performance-reports/$(date +%Y-%m-%d)">Performance Report</a></p>

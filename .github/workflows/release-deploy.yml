@@ -1,0 +1,369 @@
+name: 🚀 Release & Deploy
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        default: 'v1.0.0'
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  RUBY_VERSION: '3.1'
+  NODE_VERSION: '18'
+
+jobs:
+  # Pre-deployment testing
+  pre-deployment-tests:
+    name: 🧪 Pre-deployment Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+        
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 🖥️ Setup Browser
+        if: matrix.browser == 'chrome'
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🦊 Setup Firefox
+        if: matrix.browser == 'firefox'
+        uses: browser-actions/setup-firefox@v1
+
+      - name: 🚀 Run Critical Path Tests
+        env:
+          BROWSER: ${{ matrix.browser }}
+          HEADLESS: 'true'
+          ENV: ${{ inputs.environment || 'staging' }}
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh --browser ${{ matrix.browser }} --headless --tag smoke --reports all
+
+      - name: 📤 Upload Pre-deployment Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pre-deployment-${{ matrix.browser }}
+          path: reports/
+          retention-days: 30
+
+  # Deployment validation
+  deployment-validation:
+    name: ✅ Deployment Validation
+    runs-on: ubuntu-latest
+    needs: pre-deployment-tests
+    if: success()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 🖥️ Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🔍 Validate Environment Accessibility
+        env:
+          ENV: ${{ inputs.environment || 'staging' }}
+        run: |
+          echo "Validating $ENV environment accessibility..."
+          # Run basic connectivity tests
+          ./run_tests.sh --browser chrome --headless --env $ENV --tag smoke --reports json
+
+      - name: ✅ Health Check
+        run: |
+          if [ -f "reports/test_results.json" ]; then
+            success_rate=$(cat reports/test_results.json | jq '.summary.success_rate')
+            if (( $(echo "$success_rate >= 95" | bc -l) )); then
+              echo "✅ Health check passed (Success rate: $success_rate%)"
+            else
+              echo "❌ Health check failed (Success rate: $success_rate%)"
+              exit 1
+            fi
+          else
+            echo "❌ No test results found"
+            exit 1
+          fi
+
+  # Post-deployment testing
+  post-deployment-tests:
+    name: 🎯 Post-deployment Tests
+    runs-on: ubuntu-latest
+    needs: deployment-validation
+    if: success()
+    
+    strategy:
+      matrix:
+        browser: [chrome, firefox]
+        test-suite: [smoke, regression]
+        
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 🖥️ Setup Browser
+        if: matrix.browser == 'chrome'
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🦊 Setup Firefox
+        if: matrix.browser == 'firefox'
+        uses: browser-actions/setup-firefox@v1
+
+      - name: ⏳ Wait for deployment stabilization
+        run: sleep 60
+
+      - name: 🧪 Run Post-deployment Tests
+        env:
+          BROWSER: ${{ matrix.browser }}
+          HEADLESS: 'true'
+          ENV: ${{ inputs.environment || 'staging' }}
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh --browser ${{ matrix.browser }} --headless --env $ENV --tag ${{ matrix.test-suite }} --reports all
+
+      - name: 📊 Analyze Results
+        if: always()
+        run: |
+          if [ -f "reports/test_results.json" ]; then
+            echo "## 📊 Post-deployment Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "- **Browser**: ${{ matrix.browser }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Test Suite**: ${{ matrix.test-suite }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Environment**: ${{ inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Results:" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat reports/test_results.json | jq '.summary' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload Post-deployment Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: post-deployment-${{ matrix.browser }}-${{ matrix.test-suite }}
+          path: reports/
+          retention-days: 90
+
+  # Generate release report
+  generate-release-report:
+    name: 📈 Generate Release Report
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-tests, deployment-validation, post-deployment-tests]
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: 🔄 Consolidate All Results
+        run: |
+          mkdir -p release-results
+          find . -name "*deployment*" -type d | while read dir; do
+            if [ -d "$dir/allure-results" ]; then
+              cp -r "$dir"/allure-results/* release-results/ 2>/dev/null || true
+            fi
+          done
+
+      - name: 🎨 Generate Release Report
+        run: |
+          if [ "$(ls -A release-results)" ]; then
+            allure generate release-results --clean -o release-report
+            echo "✅ Release report generated"
+          else
+            mkdir -p release-report
+            echo "<h1>No test results for release</h1>" > release-report/index.html
+          fi
+
+      - name: 📊 Create Release Summary
+        run: |
+          cat > release-summary.md << EOF
+          # 🚀 Release Validation Report
+          
+          **Version**: ${{ inputs.version || github.ref_name }}
+          **Environment**: ${{ inputs.environment || 'staging' }}
+          **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Triggered by**: ${{ github.actor }}
+          
+          ## 📊 Test Results Summary
+          
+          | Phase | Status |
+          |-------|--------|
+          | Pre-deployment | ${{ needs.pre-deployment-tests.result == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Deployment Validation | ${{ needs.deployment-validation.result == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          | Post-deployment | ${{ needs.post-deployment-tests.result == 'success' && '✅ PASSED' || '❌ FAILED' }} |
+          
+          ## 🔗 Links
+          - [GitHub Actions Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - [Detailed Test Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/release-reports/${{ inputs.version || github.ref_name }})
+          
+          EOF
+
+      - name: 📊 Deploy Release Report
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: release-report
+          destination_dir: release-reports/${{ inputs.version || github.ref_name }}
+
+      - name: 📧 Send Release Notification
+        if: inputs.environment == 'production'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🚀 Production Release Validation - ${{ inputs.version || github.ref_name }}"
+          to: ${{ secrets.RELEASE_NOTIFICATION_EMAIL }}
+          from: "GitHub Actions <noreply@github.com>"
+          html_body: |
+            <h2>🚀 Production Release Validation</h2>
+            <p><strong>Version:</strong> ${{ inputs.version || github.ref_name }}</p>
+            <p><strong>Status:</strong> ${{ (needs.pre-deployment-tests.result == 'success' && needs.deployment-validation.result == 'success' && needs.post-deployment-tests.result == 'success') && '✅ SUCCESS' || '❌ FAILED' }}</p>
+            <p><strong>Date:</strong> $(date -u)</p>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Details:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View GitHub Actions</a></p>
+            <p><strong>Test Report:</strong> <a href="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/release-reports/${{ inputs.version || github.ref_name }}">View Detailed Report</a></p>
+
+      - name: 📤 Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-validation-${{ inputs.version || github.ref_name }}
+          path: |
+            release-report/
+            release-summary.md
+          retention-days: 365
+
+  # Rollback on failure
+  rollback-on-failure:
+    name: 🔄 Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [pre-deployment-tests, deployment-validation, post-deployment-tests]
+    if: failure() && inputs.environment == 'production'
+    
+    steps:
+      - name: 🚨 Create Rollback Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 URGENT: Production Deployment Failure - Rollback Required',
+              body: `
+              ## 🚨 Production Deployment Failure
+              
+              **Version**: ${{ inputs.version || github.ref_name }}
+              **Environment**: ${{ inputs.environment }}
+              **Failure Time**: ${new Date().toISOString()}
+              **GitHub Run**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              
+              ### Failed Phases:
+              - Pre-deployment: ${{ needs.pre-deployment-tests.result }}
+              - Deployment Validation: ${{ needs.deployment-validation.result }}
+              - Post-deployment: ${{ needs.post-deployment-tests.result }}
+              
+              ### Required Actions:
+              1. [ ] Investigate failure cause
+              2. [ ] Initiate rollback procedure
+              3. [ ] Verify rollback success
+              4. [ ] Notify stakeholders
+              
+              ### Assignees:
+              @${{ github.actor }}
+              `,
+              labels: ['critical', 'production', 'rollback-required'],
+              assignees: ['${{ github.actor }}']
+            });
+            
+            // Pin the issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              state: 'open'
+            });
+
+      - name: 📞 Emergency Notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🚨 URGENT: Production Deployment Failure - ${{ inputs.version || github.ref_name }}"
+          to: ${{ secrets.EMERGENCY_NOTIFICATION_EMAIL }}
+          from: "GitHub Actions Emergency <emergency@github.com>"
+          html_body: |
+            <h1 style="color: red;">🚨 URGENT: Production Deployment Failure</h1>
+            <p><strong>Version:</strong> ${{ inputs.version || github.ref_name }}</p>
+            <p><strong>Time:</strong> $(date -u)</p>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Action Required:</strong> Immediate rollback needed</p>
+            <p><strong>Details:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">View Failure Details</a></p>

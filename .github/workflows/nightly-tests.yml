@@ -1,0 +1,215 @@
+name: 🌙 Nightly E2E Tests
+
+on:
+  schedule:
+    # Run every night at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - test
+          - staging
+          - production
+      full_suite:
+        description: 'Run full test suite'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  RUBY_VERSION: '3.1'
+  NODE_VERSION: '18'
+
+jobs:
+  nightly-full-suite:
+    name: 🌙 Full Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox]
+        environment: [test, staging]
+        
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 💎 Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: 🖥️ Setup Chrome
+        if: matrix.browser == 'chrome'
+        uses: browser-actions/setup-chrome@v1
+
+      - name: 🦊 Setup Firefox
+        if: matrix.browser == 'firefox'
+        uses: browser-actions/setup-firefox@v1
+
+      - name: 📁 Setup Test Environment
+        run: |
+          mkdir -p reports/{screenshots,allure-results}
+          chmod +x run_tests.sh
+
+      - name: 🚀 Run Complete Test Suite
+        env:
+          BROWSER: ${{ matrix.browser }}
+          HEADLESS: 'true'
+          ENV: ${{ matrix.environment }}
+        run: |
+          echo "🚀 Running nightly tests on ${{ matrix.browser }} in ${{ matrix.environment }}"
+          ./run_tests.sh --browser ${{ matrix.browser }} --headless --env ${{ matrix.environment }} --reports all
+
+      - name: 🎨 Generate Reports
+        if: always()
+        run: |
+          if [ -d "reports/allure-results" ] && [ "$(ls -A reports/allure-results)" ]; then
+            allure generate reports/allure-results --clean -o reports/allure-report
+          fi
+
+      - name: 📊 Generate Nightly Summary
+        if: always()
+        run: |
+          echo "## 🌙 Nightly Test Summary - ${{ matrix.browser }} (${{ matrix.environment }})" >> $GITHUB_STEP_SUMMARY
+          echo "🕐 **Execution Time**: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "reports/test_results.json" ]; then
+            echo "### 📈 Test Results" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat reports/test_results.json | jq '.summary' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            
+            # Check for failures and add to summary
+            failed_count=$(cat reports/test_results.json | jq '.summary.failed')
+            if [ "$failed_count" -gt 0 ]; then
+              echo "⚠️ **$failed_count tests failed!**" >> $GITHUB_STEP_SUMMARY
+              echo "### Failed Tests:" >> $GITHUB_STEP_SUMMARY
+              cat reports/test_results.json | jq -r '.examples[] | select(.status == "failed") | "- " + .full_description' >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: 📤 Upload Nightly Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-reports-${{ matrix.browser }}-${{ matrix.environment }}
+          path: reports/
+          retention-days: 7
+
+  # Create consolidated nightly report
+  consolidate-nightly-results:
+    name: 📊 Consolidate Nightly Results
+    runs-on: ubuntu-latest
+    needs: nightly-full-suite
+    if: always()
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🌐 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: npm install -g allure-commandline
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: 🔄 Merge Results
+        run: |
+          mkdir -p consolidated-results
+          find . -name "nightly-reports-*" -type d | while read dir; do
+            echo "Processing $dir"
+            if [ -d "$dir/allure-results" ]; then
+              cp -r "$dir"/allure-results/* consolidated-results/ 2>/dev/null || true
+            fi
+          done
+
+      - name: 🎨 Generate Consolidated Report
+        run: |
+          if [ "$(ls -A consolidated-results)" ]; then
+            allure generate consolidated-results --clean -o nightly-report
+          else
+            mkdir -p nightly-report
+            echo "<h1>No nightly test results</h1>" > nightly-report/index.html
+          fi
+
+      - name: 📊 Deploy Nightly Report
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: nightly-report
+          destination_dir: nightly-reports/$(date +%Y-%m-%d)
+
+      - name: 📧 Send Email Report
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "❌ Nightly Test Failures - $(date +%Y-%m-%d)"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: "GitHub Actions <noreply@github.com>"
+          html_body: |
+            <h2>🌙 Nightly Test Report</h2>
+            <p><strong>Date:</strong> $(date -u)</p>
+            <p><strong>Repository:</strong> ${{ github.repository }}</p>
+            <p><strong>Status:</strong> ❌ FAILED</p>
+            <p><strong>View Details:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">GitHub Actions</a></p>
+            <p><strong>Test Report:</strong> <a href="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/nightly-reports/$(date +%Y-%m-%d)">View Report</a></p>
+
+  # Cleanup old nightly reports
+  cleanup-old-reports:
+    name: 🧹 Cleanup Old Reports
+    runs-on: ubuntu-latest
+    needs: consolidate-nightly-results
+    
+    steps:
+      - name: 📥 Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🧹 Remove reports older than 30 days
+        run: |
+          find nightly-reports -type d -name "20*" | while read dir; do
+            dir_date=$(basename "$dir")
+            if [ "$dir_date" \< "$(date -d '30 days ago' +%Y-%m-%d)" ]; then
+              echo "Removing old report: $dir"
+              rm -rf "$dir"
+            fi
+          done
+
+      - name: 💾 Commit cleanup
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          if ! git diff --staged --quiet; then
+            git commit -m "🧹 Cleanup old nightly reports"
+            git push
+          else
+            echo "No old reports to cleanup"
+          fi

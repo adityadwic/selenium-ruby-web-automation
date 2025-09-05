@@ -1,0 +1,106 @@
+name: ✨ Feature Request
+description: Suggest a new feature for the automation framework
+title: "[FEATURE] "
+labels: ["enhancement", "needs-triage"]
+assignees:
+  - adityadwicahyono
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! ✨
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      description: What type of feature are you requesting?
+      options:
+        - New Test Scenario
+        - Framework Enhancement
+        - Reporting Improvement
+        - CI/CD Enhancement
+        - Performance Optimization
+        - Documentation Improvement
+        - Browser Support
+        - Integration Feature
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: What's the priority of this feature?
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a problem? Please describe.
+      placeholder: A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like
+      placeholder: A clear and concise description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions
+      description: Describe alternatives you've considered
+      placeholder: A clear and concise description of any alternative solutions or features you've considered.
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Details
+      description: If you have ideas about how this could be implemented, please share
+      placeholder: Technical details about potential implementation...
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Define what success looks like for this feature
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+        - [ ] Criteria 3
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or examples about the feature request
+      placeholder: Any additional information that might be helpful...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Please verify the following
+      options:
+        - label: I have searched for similar feature requests
+          required: true
+        - label: I have provided a clear problem statement
+          required: true
+        - label: I have described the proposed solution
+          required: true
+        - label: I understand this may take time to implement
+          required: true
