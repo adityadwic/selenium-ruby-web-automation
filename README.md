@@ -1,6 +1,6 @@
 # 🎯 Selenium Ruby Web Automation Framework
 
-[![E2E Tests](https://github.com/adityadwic/selenium-ruby-web/workflows/E2E%20Tests/badge.svg)](https://github.com/adityadwic/selenium-ruby-web/actions/workflows/e2e-tests.yml)
+[![E2E Tests](https://github.com/adityadwic/selenium-ruby-web-automation/workflows/E2E%20Tests/badge.svg)](https://github.com/adityadwic/selenium-ruby-web-automation/actions/workflows/e2e-tests.yml)
 [![Ruby Version](https://img.shields.io/badge/ruby-3.1+-red.svg)](https://www.ruby-lang.org)
 [![Selenium](https://img.shields.io/badge/selenium-4.x-green.svg)](https://selenium.dev)
 [![RSpec](https://img.shields.io/badge/rspec-3.x-blue.svg)](https://rspec.info)
@@ -59,8 +59,8 @@ This automation framework demonstrates professional-level QA engineering skills 
 ### Installation & Setup
 ```bash
 # Clone repository
-git clone https://github.com/adityadwic/selenium-ruby-web.git
-cd selenium-ruby-web
+git clone https://github.com/adityadwic/selenium-ruby-web-automation.git
+cd selenium-ruby-web-automation
 
 # Install dependencies
 bundle install
@@ -198,7 +198,7 @@ Framework includes comprehensive CI/CD pipeline:
 ### Report Deployment
 Test reports can be deployed to GitHub Pages:
 ```
-https://adityadwic.github.io/selenium-ruby-web/reports/
+https://adityadwic.github.io/selenium-ruby-web-automation/reports/
 ```
 
 ## 🛠️ Development & Debugging
