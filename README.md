@@ -130,6 +130,7 @@ Automated end-to-end testing covering the complete user journey:
 - **Test Data**: Dynamically generated with Faker
 
 ## 📊 Advanced Reporting System
+<img width="1439" height="898" alt="test-report-selenium-ruby" src="https://github.com/user-attachments/assets/4965daf2-19eb-417d-aeff-f8a43d3ec45d" />
 
 ### 🎨 Modern HTML Report
 - Interactive dashboard with real-time metrics
