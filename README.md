@@ -1,6 +1,6 @@
 # 🎯 Selenium Ruby Web Automation Framework
 
-[![E2E Tests](https://github.com/adityadwic/selenium-ruby-web-automation/workflows/E2E%20Tests/badge.svg)](https://github.com/adityadwic/selenium-ruby-web-automation/actions/workflows/e2e-tests.yml)
+[![🎯 Selenium Ruby E2E Tests](https://github.com/adityadwic/selenium-ruby-web-automation/workflows/🎯%20Selenium%20Ruby%20E2E%20Tests/badge.svg)](https://github.com/adityadwic/selenium-ruby-web-automation/actions/workflows/e2e-tests.yml)
 [![Ruby Version](https://img.shields.io/badge/ruby-3.1+-red.svg)](https://www.ruby-lang.org)
 [![Selenium](https://img.shields.io/badge/selenium-4.x-green.svg)](https://selenium.dev)
 [![RSpec](https://img.shields.io/badge/rspec-3.x-blue.svg)](https://rspec.info)
@@ -18,6 +18,55 @@ This automation framework demonstrates professional-level QA engineering skills 
 - 📊 **Interactive HTML Reports** with real-time metrics and visualizations
 - 🚀 **CI/CD Ready** with GitHub Actions workflows
 - 🏗️ **Page Object Model** architecture for maintainable code
+
+## 🛠️ Tech Stack
+
+### Core Technologies
+- 💎 **Ruby 3.1+** - Modern Ruby programming language
+- 🌐 **Selenium WebDriver 4.x** - Browser automation framework
+- 🧪 **RSpec 3.x** - Behavior-driven testing framework
+- 🎯 **Page Object Model (POM)** - Design pattern for maintainable tests
+
+### Testing & Quality Assurance
+- 🔧 **Capybara** - Web application testing framework
+- 🎲 **Faker** - Generate realistic test data dynamically
+- 📸 **Selenium Screenshot** - Automated screenshot capture
+- ⏱️ **Explicit Waits** - Robust element synchronization
+- 🔄 **Retry Logic** - Handling flaky test scenarios
+
+### Reporting & Analytics
+- 📊 **Chart.js** - Interactive data visualizations
+- 📋 **Custom HTML Reporter** - Modern responsive reporting
+- 📄 **JSON Export** - Machine-readable test results
+- 🎨 **Allure Framework** - Enterprise-grade test reporting
+- 📈 **Real-time Dashboard** - Live test execution monitoring
+
+### Browser Support
+- 🚀 **Google Chrome** - Primary testing browser with ChromeDriver
+- 🦊 **Mozilla Firefox** - Cross-browser compatibility testing
+- 🍎 **Safari** - macOS native browser support
+- 👁️ **Headless Mode** - CI/CD optimized execution
+
+### Development Tools
+- 📦 **Bundler** - Ruby dependency management
+- 🔨 **Rake** - Task automation and build scripts
+- 📝 **YAML Configuration** - Environment-specific settings
+- 🐛 **Pry** - Interactive debugging console
+- 📏 **RuboCop** - Code style and quality enforcement
+
+### CI/CD & DevOps
+- ⚡ **GitHub Actions** - Automated testing workflows
+- 🔄 **Matrix Testing** - Multi-browser & Ruby version testing
+- 📅 **Scheduled Runs** - Nightly regression testing
+- 🚀 **GitHub Pages** - Automated report deployment
+- 🤖 **Dependabot** - Automated dependency updates
+- 📊 **Performance Monitoring** - Lighthouse integration
+
+### Infrastructure
+- 🖥️ **macOS** - Primary development environment
+- 🐳 **Docker Ready** - Containerization support
+- ☁️ **Cloud Compatible** - Ready for cloud execution
+- 📱 **Responsive Design** - Mobile-friendly test reports
 
 ## ✨ Key Features
 
@@ -262,7 +311,21 @@ bundle exec rspec
 - [ ] **Accessibility testing** with axe-core
 - [ ] **Database testing** capabilities
 
-## 📄 License
+## � Technology Summary
+
+| Category | Technologies |
+|----------|-------------|
+| **Language** | Ruby 3.1+ |
+| **Testing** | RSpec, Selenium WebDriver 4.x, Capybara |
+| **Design Pattern** | Page Object Model (POM) |
+| **Browsers** | Chrome, Firefox, Safari (+ Headless) |
+| **Reporting** | Custom HTML, Chart.js, Allure, JSON |
+| **CI/CD** | GitHub Actions, Matrix Testing |
+| **Data** | Faker, YAML Configuration |
+| **Tools** | Bundler, Rake, RuboCop, Pry |
+| **Infrastructure** | macOS, Docker Ready, Cloud Compatible |
+
+## �📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
