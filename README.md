@@ -325,10 +325,6 @@ bundle exec rspec
 | **Tools** | Bundler, Rake, RuboCop, Pry |
 | **Infrastructure** | macOS, Docker Ready, Cloud Compatible |
 
-## �📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ---
 
 ## 👨‍💻 About the Author
