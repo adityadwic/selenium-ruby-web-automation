@@ -336,7 +336,7 @@ jobs:
           echo "- Consider caching strategies for better performance" >> performance-report.md
 
       - name: 📈 Deploy Performance Report
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
