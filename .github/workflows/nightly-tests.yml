@@ -58,7 +58,7 @@ jobs:
 
       - name: 🖥️ Setup Chrome
         if: matrix.browser == 'chrome'
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
 
       - name: 🦊 Setup Firefox
         if: matrix.browser == 'firefox'
